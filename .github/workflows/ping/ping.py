@@ -1,8 +1,7 @@
-from os import environ
+from asyncio import run
 from websockets import connect
-from asyncio import run, wait_for
 
 async def main():
-    async with connect(environ["URL"]) as websocket: await wait_for(websocket.ping(), 10)
+    async with connect("wss://api.playontable.com/websocket/") as websocket: await websocket.ping()
 
 run(main())

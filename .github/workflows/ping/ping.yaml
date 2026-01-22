@@ -13,6 +13,4 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install websockets
-      - env:
-          URL: wss://api.playontable.com/websocket/
-        run: python .github/workflows/ping/ping.py
+      - run: python .github/workflows/ping/ping.py
