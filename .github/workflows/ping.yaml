@@ -1,4 +1,4 @@
-name: 2ping"
+name: "ping"
 
 on:
   workflow_dispatch: {}
