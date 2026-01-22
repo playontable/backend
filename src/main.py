@@ -10,8 +10,8 @@ async def lifespan(app):
     app.state.users.clear()
 
 class User:
-    def __init__(self, websocket, users, /):
-        while users.setdefault(code := "".join(choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(5)), self) is not self: pass
+    def __init__(self, websocket, /):
+        while app.state.users.setdefault(code := "".join(choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(5)), self) is not self: pass
         self.code = code
         self.room = {self}
         self.websocket = websocket
