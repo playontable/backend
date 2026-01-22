@@ -33,9 +33,7 @@ async def handle(user, json = None, /):
     elif (host := app.state.users.get(json.get("data"))) is not None and host is not user:
         for user in (merged := user.room | host.room): user.room = merged
 
-app = FastAPI(lifespan = lifespan, openapi_url = None)
-
-@app.websocket("/websocket/")
+@(app := FastAPI(lifespan = lifespan, openapi_url = None)).websocket("/websocket/")
 async def websocket(websocket: WebSocket):
     async with User(websocket) as user:
         async for json in websocket.iter_json(): await handle(user, json)
