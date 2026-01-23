@@ -1,9 +1,9 @@
 name: "ping"
 
 on:
-  workflow_dispatch: {}
   schedule:
     - cron: "*/10 * * * *"
+  workflow_dispatch: {}
 
 jobs:
   ping:
