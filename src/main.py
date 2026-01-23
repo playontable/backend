@@ -40,5 +40,5 @@ async def websocket(websocket: WebSocket):
     async with User(websocket) as user:
         async for json in websocket.iter_json(): await handle(user, json)
 
-app.get("/")
+@app.get("/")
 async def status(): return {"status": "ok"}
