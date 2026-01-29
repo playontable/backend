@@ -89,8 +89,8 @@ app = FastAPI(lifespan = lifespan, openapi_url = None)
 
 @app.websocket("/websocket/")
 async def websocket(websocket: WebSocket):
-    async with User(websocket) as user, Room(user) as room:
-        async for json in websocket.iter_json(): await handle(user, room, json)
+    async with User(websocket) as user, Room(user):
+        async for json in websocket.iter_json(): await handle(user, user.room, json)
 
 @app.head("/")
 async def status(): return {"status": "ok"}
