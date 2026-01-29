@@ -8,7 +8,7 @@ class RoomState(str, Enum):
     LOBBY = "lobby"
     PLAYING = "playing"
 
-class RoomRules():
+class RoomRules(Exception):
     def __init__(self, room, /): self.room = room
 
     async def can_join(self, user, /):
@@ -43,6 +43,7 @@ class Room:
         async with self.lock: self.users.add(user)
 
     async def exit(self, user, /):
+        user.room = None
         async with self.lock: self.users.discard(user)
 
     async def play(self):
