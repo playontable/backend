@@ -11,7 +11,7 @@ class RoomState():
 class RoomRules():
     async def can_join(self, user, room, /):
         if room is None: raise RoomUnexistent()
-        if room.host is user: raise HostCannotJoin()
+        elif room.host is user: raise HostCannotJoin()
         elif room.state == RoomState.PLAYING: raise JoinNotAllowed()
         else: return True
 
