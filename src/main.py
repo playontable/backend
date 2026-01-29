@@ -3,36 +3,31 @@ from asyncio import Lock, gather
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import Response
 from contextlib import asynccontextmanager
+from typing import Union, Literal, Annotated
+from pydantic import Field, BaseModel, TypeAdapter, NonNegativeInt, ValidationError, StringConstraints
 
-class RoomState():
+class RoomBeing():
     LOBBY = "LOBBY"
     START = "START"
 
 class RoomRules():
     async def can_join(self, user, room, /):
-        if room is None: raise RoomUnexistent()
-        elif room.host is user: raise HostCannotJoin()
-        elif room.state == RoomState.START: raise JoinNotAllowed()
+        if room is None: raise RoomHasToExist()
+        elif user is room.host: raise JoinOthersRoom()
+        elif room.state == RoomBeing.START: raise JoinWhileLobby()
         else: return True
 
-    async def can_play(self, room, /):
-        if len(room.users) == 1: raise PlayNotAllowed()
+    async def can_play(self, user, room, /):
+        if len(room.users) == 1: raise RoomMustBeFull()
+        elif user is not room.host: raise OnlyHostStarts()
         else: return True
 
-class RoomFails(Exception):
-    reason = "fail"
-
-class RoomUnexistent(RoomFails):
-    reason = "none"
-
-class HostCannotJoin(RoomFails):
-    reason = "host"
-
-class JoinNotAllowed(RoomFails):
-    reason = "play"
-
-class PlayNotAllowed(RoomFails):
-    reason = "only"
+class RoomFails(Exception): reason = None
+class RoomHasToExist(RoomFails): reason = "none"
+class JoinOthersRoom(RoomFails): reason = "host"
+class JoinWhileLobby(RoomFails): reason = "play"
+class RoomMustBeFull(RoomFails): reason = "void"
+class OnlyHostStarts(RoomFails): reason = ""
 
 class Room:
     def __init__(self, user, /):
@@ -42,7 +37,7 @@ class Room:
         self.users = set()
         self.lock = Lock()
         self.rules = RoomRules()
-        self.state = RoomState.LOBBY
+        self.state = RoomBeing.LOBBY
 
     async def __aenter__(self):
         await self.join(self.host)
@@ -62,7 +57,7 @@ class Room:
         user.room = None
 
     async def play(self):
-        self.state = RoomState.START
+        self.state = RoomBeing.START
         await self.cast({"hook": "play"})
 
     async def cast(self, json, /, *, exclude = None): await gather(*(user.websocket.send_json(json) for user in self.users if user is not exclude), return_exceptions = True)
@@ -81,11 +76,60 @@ class User:
         await self.websocket.close()
 
 async def handle(user, room, json = None, /):
-    match hook := json.get("hook"), room := app.state.rooms.get(json.get("data")) or room:
-        case "join": await room.join(user) if await room.rules.can_join(user, room) else None
-        case "room": await room.play() if await room.rules.can_play(room) else None
+    match hook := json.get("hook"):
+        case "join":
+            room = app.state.rooms.get(json.get("data"))
+            if await room.rules.can_join(user, room): await room.join(user)
+        case "room": await room.play() if await room.rules.can_play(user, room) else None
         case "solo": await room.play()
         case _: await room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
+
+class DragData(BaseModel):
+    x: int
+    y: int
+
+class CopyData(BaseModel):
+    x: int
+    y: int
+
+class RoomJSON(BaseModel):
+    hook: Literal["room"]
+
+class JoinJSON(BaseModel):
+    hook: Literal["join"]
+    data: Annotated[str, StringConstraints(pattern = r"^[A-Z0-9]$", min_length = 5, max_length = 5)]
+
+class SoloJSON(BaseModel):
+    hook: Literal["solo"]
+
+class DropJSON(BaseModel):
+    hook: Literal["drop"]
+    index: NonNegativeInt
+
+class RollJSON(BaseModel):
+    hook: Literal["roll"]
+    data: Annotated[list[Annotated[int, Field(ge = 1, le = 6)]], Field(min_length = 6, max_length = 6)]
+    index: NonNegativeInt
+
+class WipeJSON(BaseModel):
+    hook: Literal["wipe"]
+    index: NonNegativeInt
+
+class StepJSON(BaseModel):
+    hook: Literal["step"]
+    index: NonNegativeInt
+
+class DragJSON(BaseModel):
+    hook: Literal["drag"]
+    data: DragData
+    index: NonNegativeInt
+
+class CopyJSON(BaseModel):
+    hook: Literal["copy"]
+    data: CopyData
+    index: NonNegativeInt
+
+adapter = TypeAdapter(Annotated[Union[RoomJSON, JoinJSON, SoloJSON, DropJSON, RollJSON, WipeJSON, StepJSON, DragJSON, CopyJSON], Field(discriminator = "hook")])
 
 @asynccontextmanager
 async def lifespan(app):
@@ -99,7 +143,8 @@ app = FastAPI(lifespan = lifespan, openapi_url = None)
 async def websocket(websocket: WebSocket):
     async with User(websocket) as user, Room(user):
         async for json in websocket.iter_json():
-            try: await handle(user, user.room, json)
+            try: await handle(user, user.room, adapter.validate_python(json).model_dump())
+            except ValidationError: pass
             except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
 
 @app.head("/")
