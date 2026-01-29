@@ -8,72 +8,91 @@ class RoomState(str, Enum):
     LOBBY = "lobby"
     PLAYING = "playing"
 
+class RoomRules():
+    def __init__(self, room, /): self.room = room
+
+    async def can_join(self, user, /):
+        if self.room.host is user: return False, "host"
+        elif self.room.state is RoomState.PLAYING: return False, "play"
+        else: return True, None
+
+    async def can_play(self):
+        if len(self.room.users) == 1: return False, "only"
+        else: return True, None
+
 class Room:
-    def __init__(self):
-        self.lock = Lock()
+    def __init__(self, user, /):
+        while app.state.rooms.setdefault(code := "".join(choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(5)), self) is not self: pass
+        self.code = code
+        self.host = user
         self.users = set()
+        self.lock = Lock()
+        self.rules = RoomRules(self)
         self.state = RoomState.LOBBY
 
-    async def join(self, user, /):
-        async with self.lock:
-            if self.state is RoomState.PLAYING: return False
-            self.users.add(user)
-            user.room = self
-            return True
+    async def __aenter__(self):
+        await self.join(self.host)
+        await self.host.websocket.send_json({"hook": "code", "data": self.code})
+        return self
 
-    async def play(self):
-        async with self.lock:
-            if len(self.users) <= 1: return False
-            self.state = RoomState.PLAYING
-            return True
+    async def __aexit__(self, exc_type, exc, tb):
+        app.state.rooms.pop(self.code, None)
+
+    async def join(self, user, /):
+        user.room = self
+        async with self.lock: self.users.add(user)
 
     async def exit(self, user, /):
         async with self.lock: self.users.discard(user)
 
-    async def broadcast(self, json, /, *, exclude = None): await gather(*(user.websocket.send_json(json) for user in self.users if user is not exclude), return_exceptions = True)
+    async def play(self):
+        self.state = RoomState.PLAYING
+        await self.cast({"hook": "play"})
+
+    async def cast(self, json, /, *, exclude = None):
+        async with self.lock: await gather(*(user.websocket.send_json(json) for user in self.users if user is not exclude), return_exceptions = True)
 
 class User:
     def __init__(self, websocket, /):
-        while app.state.users.setdefault(code := "".join(choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(5)), self) is not self: pass
-        self.code = code
-        self.room = Room()
+        self.room = None
         self.websocket = websocket
 
     async def __aenter__(self):
-        await self.room.join(self)
         await self.websocket.accept()
-        await self.websocket.send_json({"hook": "code", "data": self.code})
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        await self.room.exit(self)
-        if app.state.users.get(self.code) is self: app.state.users.pop(self.code, None)
+        if self.room is not None: await self.room.exit(self)
         await self.websocket.close()
 
-async def handle(user, json = None, /):
+async def handle(user, room, json = None, /):
     match hook := json.get("hook"):
         case "join":
-            host = app.state.users.get(json.get("data").upper())
-            if host is None: await user.websocket.send_json({"hook": "fail", "data": "room"})
-            elif host is user: await user.websocket.send_json({"hook": "fail", "data": "same"})
-            elif not await host.room.join(user): await user.websocket.send_json({"hook": "fail", "data": "join"})
+            room = app.state.rooms.get(json.get("data"))
+            permit, reason = await room.rules.can_join(user)
+            if permit: await room.join(user)
+            else: await user.websocket.send_json({"hook": "fail", "data": reason})
         case "room":
-            if not await user.room.play(): await user.websocket.send_json({"hook": "fail", "data": "only"})
-            else: await user.room.broadcast(json)
-        case _: await user.room.broadcast(json, exclude = user if hook in {"drag", "drop"} else None)
+            permit, reason = await user.room.rules.can_play()
+            if permit: await user.room.play()
+            else: await user.websocket.send_json({"hook": "fail", "data": reason})
+        case "solo": await room.play()
+        case _: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
 
 @asynccontextmanager
 async def lifespan(app):
-    app.state.users = {}
+    app.state.rooms = {}
     yield
-    app.state.users.clear()
+    app.state.rooms.clear()
 
 app = FastAPI(lifespan = lifespan, openapi_url = None)
 
 @app.websocket("/websocket/")
 async def websocket(websocket: WebSocket):
-    async with User(websocket) as user:
-        async for json in websocket.iter_json(): await handle(user, json)
+    async with User(websocket) as user, Room(user) as room:
+        async for json in websocket.iter_json(): await handle(user, room, json)
 
 @app.head("/")
 async def status(): return {"status": "ok"}
+
+if __name__ == "__main__": import uvicorn; uvicorn.run("main:app", reload = True)
