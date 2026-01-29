@@ -73,11 +73,11 @@ async def handle(user, room, json = None, /):
             if permit: await room.join(user)
             else: await user.websocket.send_json({"hook": "fail", "data": reason})
         case "room":
-            permit, reason = await user.room.rules.can_play()
-            if permit: await user.room.play()
+            permit, reason = await room.rules.can_play()
+            if permit: await room.play()
             else: await user.websocket.send_json({"hook": "fail", "data": reason})
         case "solo": await room.play()
-        case _: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
+        case _: await room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
 
 @asynccontextmanager
 async def lifespan(app):
