@@ -1,24 +1,38 @@
-from enum import Enum
 from secrets import choice
 from asyncio import Lock, gather
 from fastapi import FastAPI, WebSocket
+from fastapi.responses import Response
 from contextlib import asynccontextmanager
 
-class RoomState(str, Enum):
+class RoomState():
     LOBBY = "lobby"
     PLAYING = "playing"
 
-class RoomRules(Exception):
-    def __init__(self, room, /): self.room = room
+class RoomRules():
+    async def can_join(self, user, room, /):
+        if room is None: raise RoomUnexistent()
+        if room.host is user: raise HostCannotJoin()
+        elif room.state == RoomState.PLAYING: raise JoinNotAllowed()
+        else: return True
 
-    async def can_join(self, user, /):
-        if self.room.host is user: return False, "host"
-        elif self.room.state is RoomState.PLAYING: return False, "play"
-        else: return True, None
+    async def can_play(self, room, /):
+        if len(room.users) == 1: raise PlayNotAllowed()
+        else: return True
 
-    async def can_play(self):
-        if len(self.room.users) == 1: return False, "only"
-        else: return True, None
+class RoomFails(Exception):
+    reason = "fail"
+
+class RoomUnexistent(RoomFails):
+    reason = "none"
+
+class HostCannotJoin(RoomFails):
+    reason = "host"
+
+class JoinNotAllowed(RoomFails):
+    reason = "play"
+
+class PlayNotAllowed(RoomFails):
+    reason = "only"
 
 class Room:
     def __init__(self, user, /):
@@ -27,7 +41,7 @@ class Room:
         self.host = user
         self.users = set()
         self.lock = Lock()
-        self.rules = RoomRules(self)
+        self.rules = RoomRules()
         self.state = RoomState.LOBBY
 
     async def __aenter__(self):
@@ -39,19 +53,18 @@ class Room:
         app.state.rooms.pop(self.code, None)
 
     async def join(self, user, /):
-        user.room = self
         async with self.lock: self.users.add(user)
+        user.room = self
 
     async def exit(self, user, /):
-        user.room = None
         async with self.lock: self.users.discard(user)
+        user.room = None
 
     async def play(self):
         self.state = RoomState.PLAYING
         await self.cast({"hook": "play"})
 
-    async def cast(self, json, /, *, exclude = None):
-        async with self.lock: await gather(*(user.websocket.send_json(json) for user in self.users if user is not exclude), return_exceptions = True)
+    async def cast(self, json, /, *, exclude = None): await gather(*(user.websocket.send_json(json) for user in self.users if user is not exclude), return_exceptions = True)
 
 class User:
     def __init__(self, websocket, /):
@@ -67,16 +80,9 @@ class User:
         await self.websocket.close()
 
 async def handle(user, room, json = None, /):
-    match hook := json.get("hook"):
-        case "join":
-            room = app.state.rooms.get(json.get("data"))
-            permit, reason = await room.rules.can_join(user)
-            if permit: await room.join(user)
-            else: await user.websocket.send_json({"hook": "fail", "data": reason})
-        case "room":
-            permit, reason = await room.rules.can_play()
-            if permit: await room.play()
-            else: await user.websocket.send_json({"hook": "fail", "data": reason})
+    match hook := json.get("hook"), room := app.state.rooms.get(json.get("data")) or room:
+        case "join": await room.join(user) if await room.rules.can_join(user, room) else None
+        case "room": await room.play() if await room.rules.can_play(room) else None
         case "solo": await room.play()
         case _: await room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
 
@@ -91,7 +97,11 @@ app = FastAPI(lifespan = lifespan, openapi_url = None)
 @app.websocket("/websocket/")
 async def websocket(websocket: WebSocket):
     async with User(websocket) as user, Room(user):
-        async for json in websocket.iter_json(): await handle(user, user.room, json)
+        async for json in websocket.iter_json():
+            try: await handle(user, user.room, json)
+            except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
 
 @app.head("/")
-async def status(): return {"status": "ok"}
+async def status(): return Response(status_code = 200)
+
+if __name__ == "__main__": import uvicorn; uvicorn.run("main:app", reload = True)
