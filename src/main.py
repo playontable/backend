@@ -5,14 +5,14 @@ from fastapi.responses import Response
 from contextlib import asynccontextmanager
 
 class RoomState():
-    LOBBY = "lobby"
-    PLAYING = "playing"
+    LOBBY = "LOBBY"
+    START = "START"
 
 class RoomRules():
     async def can_join(self, user, room, /):
         if room is None: raise RoomUnexistent()
         elif room.host is user: raise HostCannotJoin()
-        elif room.state == RoomState.PLAYING: raise JoinNotAllowed()
+        elif room.state == RoomState.START: raise JoinNotAllowed()
         else: return True
 
     async def can_play(self, room, /):
@@ -62,7 +62,7 @@ class Room:
         user.room = None
 
     async def play(self):
-        self.state = RoomState.PLAYING
+        self.state = RoomState.START
         await self.cast({"hook": "play"})
 
     async def cast(self, json, /, *, exclude = None): await gather(*(user.websocket.send_json(json) for user in self.users if user is not exclude), return_exceptions = True)
