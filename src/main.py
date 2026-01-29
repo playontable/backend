@@ -45,19 +45,21 @@ class Room:
         self.state = RoomState.LOBBY
 
     async def __aenter__(self):
-        await self.join(self.host)
+        async with self.lock: await self.join(self.host)
         await self.host.websocket.send_json({"hook": "code", "data": self.code})
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
+        async with self.lock:
+            for user in self.users: self.exit(user)
         app.state.rooms.pop(self.code, None)
 
     async def join(self, user, /):
-        async with self.lock: self.users.add(user)
+        self.users.add(user)
         user.room = self
 
     async def exit(self, user, /):
-        async with self.lock: self.users.discard(user)
+        self.users.discard(user)
         user.room = None
 
     async def play(self):
