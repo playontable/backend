@@ -103,4 +103,4 @@ async def websocket(websocket: WebSocket):
             except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
 
 @app.head("/")
-async def status(): return Response(status_code = 200)
+async def status(): return Response()
