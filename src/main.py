@@ -18,7 +18,7 @@ class RoomRules():
         else: return True
 
     async def can_play(self, user, room, /):
-        if len(room.users) == 1: raise RoomMustBeFull()
+        if len(room.users) <= 1: raise RoomMustBeFull()
         elif user is not room.host: raise OnlyHostStarts()
         else: return True
 
