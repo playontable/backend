@@ -15,7 +15,7 @@ class RoomState(StrEnum):
 class RoomRules():
     def __init__(self, room, /): self.room = room
 
-    def can_join(self, /):
+    def can_join(self):
         if self.room.state == RoomState.START: raise JoinWhileLobby()
         else: return True
 
