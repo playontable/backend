@@ -12,7 +12,7 @@ class RoomState(StrEnum):
     START = "START"
 
 class RoomRules():
-    def __init__(self, room): self.room = room
+    def __init__(self, room, /): self.room = room
 
     def can_join(self, /):
         if self.room.state == RoomState.START: raise JoinWhileLobby()
@@ -84,7 +84,7 @@ class User:
         if self.room is not None: await self.room.exit(self)
         await self.websocket.close()
 
-async def handle(user, room, json = None, /):
+async def handle(user, json = None, /):
     match hook := json.get("hook"):
         case "join":
             new = app.state.rooms.get(json["data"])
@@ -94,8 +94,8 @@ async def handle(user, room, json = None, /):
             if old is not None and old is not new: await old.exit(user)
 
             await new.join(user)
-        case "room": await room.play(user)
-        case _: await room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
+        case "room": await user.room.play(user)
+        case _: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
 
 class DragData(BaseModel):
     x: int
@@ -153,7 +153,7 @@ app = FastAPI(lifespan = lifespan, openapi_url = None)
 async def websocket(websocket: WebSocket):
     async with User(websocket) as user, Room(user):
         async for json in websocket.iter_json():
-            try: await handle(user, user.room, adapter.validate_python(json).model_dump())
+            try: await handle(user, adapter.validate_python(json).model_dump())
             except ValidationError: pass
             except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
 
