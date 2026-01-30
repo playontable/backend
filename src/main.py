@@ -1,5 +1,6 @@
 from enum import StrEnum
 from secrets import choice
+from logging import warning, basicConfig
 from asyncio import Lock, gather
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import Response
@@ -139,6 +140,7 @@ class CopyJSON(BaseModel):
     index: NonNegativeInt
 
 adapter = TypeAdapter(Annotated[Union[RoomJSON, JoinJSON, DropJSON, RollJSON, WipeJSON, StepJSON, DragJSON, CopyJSON], Field(discriminator = "hook")])
+basicConfig(level = warning, format = "%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 @asynccontextmanager
 async def lifespan(app):
@@ -153,7 +155,7 @@ async def websocket(websocket: WebSocket):
     async with User(websocket) as user, Room(user):
         async for json in websocket.iter_json():
             try: await handle(user, adapter.validate_python(json).model_dump())
-            except ValidationError: pass
+            except ValidationError as error: warning(f"Validation Error | ERROR = {error.errors()}, USER = {id(user)}, ROOM = {getattr(user.room, "code", None)}, JSON = {json}")
             except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
 
 @app.head("/")
