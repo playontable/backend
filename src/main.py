@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Union, Literal, Annotated
 from pydantic import Field, BaseModel, TypeAdapter, NonNegativeInt, ValidationError, StringConstraints
 
-class RoomBeing():
+class RoomState():
     LOBBY = "LOBBY"
     START = "START"
 
@@ -14,7 +14,7 @@ class RoomRules():
     async def can_join(self, user, room, /):
         if room is None: raise RoomHasToExist()
         elif user is room.host: raise JoinOthersRoom()
-        elif room.state == RoomBeing.START: raise JoinWhileLobby()
+        elif room.state == RoomState.START: raise JoinWhileLobby()
         else: return True
 
     async def can_play(self, user, room, /):
@@ -37,7 +37,7 @@ class Room:
         self.users = set()
         self.lock = Lock()
         self.rules = RoomRules()
-        self.state = RoomBeing.LOBBY
+        self.state = RoomState.LOBBY
 
     async def __aenter__(self):
         await self.join(self.host)
@@ -57,7 +57,7 @@ class Room:
         user.room = None
 
     async def play(self):
-        self.state = RoomBeing.START
+        self.state = RoomState.START
         await self.cast({"hook": "play"})
 
     async def cast(self, json, /, *, exclude = None): await gather(*(user.websocket.send_json(json) for user in self.users if user is not exclude), return_exceptions = True)
