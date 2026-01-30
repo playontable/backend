@@ -94,11 +94,7 @@ async def handle(user, json, /):
         case _:
             if user.room is not None: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
 
-class DragData(BaseModel):
-    x: int
-    y: int
-
-class CopyData(BaseModel):
+class XYPoints(BaseModel):
     x: int
     y: int
 
@@ -131,12 +127,12 @@ class StepJSON(BaseModel):
 
 class DragJSON(BaseModel):
     hook: Literal["drag"]
-    data: DragData
+    data: XYPoints
     index: NonNegativeInt
 
 class CopyJSON(BaseModel):
     hook: Literal["copy"]
-    data: CopyData
+    data: XYPoints
     index: NonNegativeInt
 
 adapter = TypeAdapter(
