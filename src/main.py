@@ -97,7 +97,7 @@ class RoomJSON(BaseModel):
 
 class JoinJSON(BaseModel):
     hook: Literal["join"]
-    data: Annotated[str, StringConstraints(pattern = r"^[A-Z0-9]$", min_length = 5, max_length = 5)]
+    data: Annotated[str, StringConstraints(pattern = r"^[A-Z0-9]{5}$")]
 
 class SoloJSON(BaseModel):
     hook: Literal["solo"]
