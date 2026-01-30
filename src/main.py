@@ -1,3 +1,4 @@
+from enum import StrEnum
 from secrets import choice
 from asyncio import Lock, gather
 from fastapi import FastAPI, WebSocket
@@ -6,7 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Union, Literal, Annotated
 from pydantic import Field, BaseModel, TypeAdapter, NonNegativeInt, ValidationError, StringConstraints
 
-class RoomState():
+class RoomState(StrEnum):
     LOBBY = "LOBBY"
     START = "START"
 
@@ -36,7 +37,7 @@ class Room:
         self.users = set()
         self.lock = Lock()
         self.rules = RoomRules(self)
-        self.state = RoomState.LOBBY
+        self.state = RoomState("LOBBY")
 
     async def __aenter__(self):
         await self.join(self.host)
@@ -63,7 +64,7 @@ class Room:
 
     async def play(self, user, /):
         async with self.lock:
-            if self.rules.can_play(user): self.state = RoomState.START
+            if self.rules.can_play(user): self.state = RoomState("START")
         await self.cast({"hook": "play"})
 
     async def cast(self, json, /, *, exclude = None):
