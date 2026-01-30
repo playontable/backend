@@ -1,11 +1,11 @@
 from enum import StrEnum
 from secrets import choice
-from logging import warning, basicConfig
 from asyncio import Lock, gather
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import Response
 from contextlib import asynccontextmanager
 from typing import Union, Literal, Annotated
+from logging import WARNING, getLogger, basicConfig
 from pydantic import Field, BaseModel, TypeAdapter, NonNegativeInt, ValidationError, StringConstraints
 
 class RoomState(StrEnum):
@@ -91,9 +91,8 @@ async def handle(user, json = None, /):
             old = user.room
             new = app.state.rooms.get(json["data"])
             if new is None: raise RoomHasToExist()
-            if old is not None and old is not new:
-                await old.exit(user)
-                await new.join(user)
+            if old is not None and old is not new: await old.exit(user)
+            await new.join(user)
         case "room": await user.room.play(user)
         case _: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
 
@@ -140,7 +139,8 @@ class CopyJSON(BaseModel):
     index: NonNegativeInt
 
 adapter = TypeAdapter(Annotated[Union[RoomJSON, JoinJSON, DropJSON, RollJSON, WipeJSON, StepJSON, DragJSON, CopyJSON], Field(discriminator = "hook")])
-basicConfig(level = warning, format = "%(asctime)s %(levelname)s %(name)s: %(message)s")
+basicConfig(level = WARNING, format = "%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = getLogger("ws")
 
 @asynccontextmanager
 async def lifespan(app):
@@ -155,7 +155,7 @@ async def websocket(websocket: WebSocket):
     async with User(websocket) as user, Room(user):
         async for json in websocket.iter_json():
             try: await handle(user, adapter.validate_python(json).model_dump())
-            except ValidationError as error: warning(f"Validation Error | ERROR = {error.errors()}, USER = {id(user)}, ROOM = {getattr(user.room, "code", None)}, JSON = {json}")
+            except ValidationError as info: logger.warning("ValidationError | USER = %s ROOM = %s JSON = %s INFO = %s", id(user), getattr(user.room, "code", None), json, info.errors(), exc_info = True)
             except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
 
 @app.head("/")
