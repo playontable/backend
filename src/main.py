@@ -106,7 +106,7 @@ class JoinJSON(BaseModel):
     data: Annotated[str, StringConstraints(pattern = r"^[A-Z0-9]{5}$")]
 
 class PlayJSON(BaseModel):
-    hook: Literal["room"]
+    hook: Literal["play"]
 
 class DropJSON(BaseModel):
     hook: Literal["drop"]
