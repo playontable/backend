@@ -38,7 +38,7 @@ class Room:
         self.lock = Lock()
         self.users = {user}
         self.rules = RoomRules(self)
-        self.state = RoomState("LOBBY")
+        self.state = RoomState.LOBBY
 
     async def join(self, user, /):
         async with self.lock:
@@ -56,7 +56,7 @@ class Room:
 
     async def play(self, user, /):
         async with self.lock:
-            if self.rules.can_play(user): self.state = RoomState("START")
+            if self.rules.can_play(user): self.state = RoomState.START
         await self.cast({"hook": "play"})
 
     async def cast(self, json, /, *, exclude = None):
@@ -82,7 +82,7 @@ class User:
 async def handle(user, json, /):
     match hook := json.get("hook"):
         case "make":
-            if user.room is not None: await user.make()
+            if user.room is None: await user.make()
         case "join":
             old = user.room
             new = app.state.rooms.get(json["data"])
