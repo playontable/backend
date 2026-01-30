@@ -85,7 +85,7 @@ async def handle(user, json, /):
             if user.room is None: await user.make()
         case "join":
             old = user.room
-            new = app.state.rooms.get(json["data"])
+            new = app.state.rooms.get(json.get("data"))
             if new is None: raise RoomHasToExist()
             if old is not None and old is not new: await old.exit(user)
             await new.join(user)
