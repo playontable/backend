@@ -35,19 +35,10 @@ class Room:
         while app.state.rooms.setdefault(code := "".join(choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(5)), self) is not self: pass
         self.code = code
         self.host = user
-        self.users = set()
         self.lock = Lock()
+        self.users = {user}
         self.rules = RoomRules(self)
         self.state = RoomState("LOBBY")
-
-    async def __aenter__(self):
-        await self.join(self.host)
-        await self.host.websocket.send_json({"hook": "code", "data": self.code})
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self.users.clear()
-        app.state.rooms.pop(self.code, None)
 
     async def join(self, user, /):
         async with self.lock:
@@ -60,8 +51,8 @@ class Room:
             if user.room is not self: return
             self.users.discard(user)
             user.room = None
-            empty = (len(self.users) == 0)
-        if empty: app.state.rooms.pop(self.code, None)
+            void = (len(self.users) == 0)
+        if void: app.state.rooms.pop(self.code, None)
 
     async def play(self, user, /):
         async with self.lock:
@@ -85,16 +76,23 @@ class User:
         if self.room is not None: await self.room.exit(self)
         await self.websocket.close()
 
-async def handle(user, json = None, /):
+    async def make(self):
+        self.room = Room(self)
+
+async def handle(user, json, /):
     match hook := json.get("hook"):
+        case "make":
+            if user.room is not None: await user.make()
         case "join":
             old = user.room
             new = app.state.rooms.get(json["data"])
             if new is None: raise RoomHasToExist()
             if old is not None and old is not new: await old.exit(user)
             await new.join(user)
-        case "room": await user.room.play(user)
-        case _: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
+        case "room":
+            if user.room is not None: await user.room.play(user)
+        case _:
+            if user.room is not None: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
 
 class DragData(BaseModel):
     x: int
@@ -103,6 +101,9 @@ class DragData(BaseModel):
 class CopyData(BaseModel):
     x: int
     y: int
+
+class MakeJSON(BaseModel):
+    hook: Literal["make"]
 
 class RoomJSON(BaseModel):
     hook: Literal["room"]
@@ -138,7 +139,23 @@ class CopyJSON(BaseModel):
     data: CopyData
     index: NonNegativeInt
 
-adapter = TypeAdapter(Annotated[Union[RoomJSON, JoinJSON, DropJSON, RollJSON, WipeJSON, StepJSON, DragJSON, CopyJSON], Field(discriminator = "hook")])
+adapter = TypeAdapter(
+    Annotated[
+        Union[
+            MakeJSON,
+            RoomJSON,
+            JoinJSON,
+            DropJSON,
+            RollJSON,
+            WipeJSON,
+            StepJSON,
+            DragJSON,
+            CopyJSON
+        ],
+        Field(discriminator = "hook")
+    ]
+)
+
 basicConfig(level = WARNING, format = "%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = getLogger("ws")
 
@@ -152,7 +169,7 @@ app = FastAPI(lifespan = lifespan, openapi_url = None)
 
 @app.websocket("/websocket/")
 async def websocket(websocket: WebSocket):
-    async with User(websocket) as user, Room(user):
+    async with User(websocket) as user:
         async for json in websocket.iter_json():
             try: await handle(user, adapter.validate_python(json).model_dump())
             except ValidationError as info: logger.warning("ValidationError | USER = %s ROOM = %s JSON = %s INFO = %s", id(user), getattr(user.room, "code", None), json, info.errors(), exc_info = True)
