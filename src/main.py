@@ -89,7 +89,7 @@ async def handle(user, json, /):
             if new is None: raise RoomHasToExist()
             if old is not None and old is not new: await old.exit(user)
             await new.join(user)
-        case "room":
+        case "play":
             if user.room is not None: await user.room.play(user)
         case _:
             if user.room is not None: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
@@ -101,12 +101,12 @@ class XYPoints(BaseModel):
 class MakeJSON(BaseModel):
     hook: Literal["make"]
 
-class RoomJSON(BaseModel):
-    hook: Literal["room"]
-
 class JoinJSON(BaseModel):
     hook: Literal["join"]
     data: Annotated[str, StringConstraints(pattern = r"^[A-Z0-9]{5}$")]
+
+class PlayJSON(BaseModel):
+    hook: Literal["room"]
 
 class DropJSON(BaseModel):
     hook: Literal["drop"]
@@ -139,8 +139,8 @@ adapter = TypeAdapter(
     Annotated[
         Union[
             MakeJSON,
-            RoomJSON,
             JoinJSON,
+            PlayJSON,
             DropJSON,
             RollJSON,
             WipeJSON,
