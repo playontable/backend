@@ -13,7 +13,6 @@ class RoomState():
 class RoomRules():
     async def can_join(self, user, room, /):
         if room is None: raise RoomHasToExist()
-        elif user is room.host: raise JoinOthersRoom()
         elif room.state == RoomState.START: raise JoinWhileLobby()
         else: return True
 
@@ -24,7 +23,6 @@ class RoomRules():
 
 class RoomFails(Exception): reason = None
 class RoomHasToExist(RoomFails): reason = "none"
-class JoinOthersRoom(RoomFails): reason = "host"
 class JoinWhileLobby(RoomFails): reason = "play"
 class RoomMustBeFull(RoomFails): reason = "void"
 class OnlyHostStarts(RoomFails): reason = ""
