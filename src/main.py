@@ -87,13 +87,12 @@ class User:
 async def handle(user, json = None, /):
     match hook := json.get("hook"):
         case "join":
+            old = user.room
             new = app.state.rooms.get(json["data"])
             if new is None: raise RoomHasToExist()
-
-            old = user.room
-            if old is not None and old is not new: await old.exit(user)
-
-            await new.join(user)
+            if old is not None and old is not new:
+                await old.exit(user)
+                await new.join(user)
         case "room": await user.room.play(user)
         case _: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
 
