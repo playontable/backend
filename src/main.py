@@ -37,8 +37,8 @@ class Room:
         self.host = user
         self.lock = Lock()
         self.users = {user}
-        self.rules = RoomRules(self)
         self.state = RoomState.LOBBY
+        self.rules = RoomRules(self)
 
     async def join(self, user, /):
         async with self.lock:
