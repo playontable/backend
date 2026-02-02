@@ -21,14 +21,12 @@ class RoomRules():
 
     def can_play(self, user, /):
         if len(self.room.users) <= 1: raise RoomMustBeFull()
-        elif user is not self.room.host: raise OnlyHostStarts()
         else: return True
 
 class RoomFails(Exception): reason = None
 class RoomHasToExist(RoomFails): reason = "none"
 class JoinWhileLobby(RoomFails): reason = "play"
 class RoomMustBeFull(RoomFails): reason = "void"
-class OnlyHostStarts(RoomFails): reason = ""
 
 class Room:
     def __init__(self, user, /):
