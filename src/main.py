@@ -168,7 +168,7 @@ async def websocket(websocket: WebSocket):
     async with User(websocket) as user:
         async for json in websocket.iter_json():
             try: await handle(user, adapter.validate_python(json))
-            except ValidationError as info: logger.warning("ValidationError | USER = %s ROOM = %s JSON = %s INFO = %s", id(user), getattr(user.room, "code", None), json, info.errors(), exc_info = True)
+            except ValidationError as info: logger.warning("ValidationError | USER = %s ROOM = %s JSON = %s INFO = %s", id(user), getattr(user.room, "code"), json, info.errors(), exc_info = True)
             except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
 
 @app.head("/")
