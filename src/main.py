@@ -11,6 +11,7 @@ from pydantic import Field, BaseModel, TypeAdapter, NonNegativeInt, ValidationEr
 class RoomState(StrEnum):
     LOBBY = "LOBBY"
     START = "START"
+    AVOID = {"drag", "hand", "fall"}
 
 class RoomRules():
     def __init__(self, room, /): self.room = room
@@ -55,9 +56,9 @@ class Room:
     async def play(self, user, /):
         async with self.lock:
             if self.rules.can_play(user): self.state = RoomState.START
-        await self.cast({"hook": "play"})
+        await self.send({"hook": "play"})
 
-    async def cast(self, json, /, *, exclude = None):
+    async def send(self, json, /, *, exclude = None):
         async with self.lock: recipients = [user for user in self.users if user is not exclude]
         await gather(*(user.websocket.send_json(json) for user in recipients), return_exceptions = True)
 
@@ -92,7 +93,7 @@ async def handle(user, json, /):
         case "play":
             if user.room is not None: await user.room.play(user)
         case _:
-            if user.room is not None: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
+            if user.room is not None: await user.room.send(json, exclude = user if hook in RoomState.AVOID else None)
 
 class XYZIndex(BaseModel):
     x: float
