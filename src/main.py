@@ -4,8 +4,8 @@ from asyncio import Lock, gather
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import Response
 from contextlib import asynccontextmanager
-from typing import Union, Literal, Annotated
-from logging import WARNING, getLogger, basicConfig
+from logging import ERROR, getLogger, basicConfig
+from typing import Union, Literal, Optional, Annotated
 from pydantic import Field, BaseModel, TypeAdapter, NonNegativeInt, ValidationError, StringConstraints
 
 class RoomState(StrEnum):
@@ -94,9 +94,10 @@ async def handle(user, json, /):
         case _:
             if user.room is not None: await user.room.cast(json, exclude = user if hook in {"drag", "drop"} else None)
 
-class XYPoints(BaseModel):
-    x: int
-    y: int
+class XYZIndex(BaseModel):
+    x: float
+    y: float
+    zIndex: Optional[int] = None
 
 class MakeJSON(BaseModel):
     hook: Literal["make"]
@@ -127,12 +128,12 @@ class StepJSON(BaseModel):
 
 class DragJSON(BaseModel):
     hook: Literal["drag"]
-    data: XYPoints
+    data: XYZIndex
     index: NonNegativeInt
 
 class CopyJSON(BaseModel):
     hook: Literal["copy"]
-    data: XYPoints
+    data: XYZIndex
     index: NonNegativeInt
 
 adapter = TypeAdapter(
@@ -152,8 +153,8 @@ adapter = TypeAdapter(
     ]
 )
 
-basicConfig(level = WARNING, format = "%(asctime)s %(levelname)s %(name)s: %(message)s")
-logger = getLogger("ws")
+basicConfig(level = ERROR, format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = getLogger("websocket")
 
 @asynccontextmanager
 async def lifespan(app):
@@ -168,7 +169,7 @@ async def websocket(websocket: WebSocket):
     async with User(websocket) as user:
         async for json in websocket.iter_json():
             try: await handle(user, adapter.validate_python(json).model_dump())
-            except ValidationError as info: logger.warning("ValidationError | USER = %s ROOM = %s JSON = %s INFO = %s", id(user), getattr(user.room, "code"), json, info.errors(), exc_info = True)
+            except ValidationError as info: logger.error("ValidationError\n\nUSER = %s\nJSON = %s\nINFO = %s\n\n", getattr(user, "websocket"), json, info.errors()[0]["msg"])
             except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
 
 @app.head("/")
