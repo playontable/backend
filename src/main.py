@@ -1,4 +1,3 @@
-from enum import StrEnum
 from secrets import choice
 from asyncio import Lock, gather
 from fastapi import FastAPI, WebSocket
@@ -8,7 +7,7 @@ from logging import ERROR, getLogger, basicConfig
 from typing import Union, Literal, Optional, Annotated
 from pydantic import Field, BaseModel, TypeAdapter, NonNegativeInt, ValidationError, StringConstraints
 
-class RoomState(StrEnum):
+class RoomState():
     LOBBY = "LOBBY"
     START = "START"
     AVOID = {"drag", "hand", "fall"}
