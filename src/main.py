@@ -155,7 +155,7 @@ adapter = TypeAdapter(
 )
 
 basicConfig(level = ERROR, format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-logger = getLogger("websocket")
+logger = getLogger("WebSocket")
 
 @asynccontextmanager
 async def lifespan(app):
@@ -170,8 +170,8 @@ async def websocket(websocket: WebSocket):
     async with User(websocket) as user:
         async for json in websocket.iter_json():
             try: await handle(user, adapter.validate_python(json).model_dump())
-            except ValidationError as info: logger.error("ValidationError\n\nUSER = %s\nJSON = %s\nINFO = %s\n\n", getattr(user, "websocket"), json, info.errors()[0]["msg"])
             except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
+            except ValidationError as info: logger.error("ValidationError\n\nUSER = %s\nJSON = %s\nINFO = %s\n\n", getattr(user, "websocket"), json, info.errors()[0]["msg"])
 
 @app.head("/")
 async def status(): return Response()
