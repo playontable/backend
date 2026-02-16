@@ -19,7 +19,7 @@ class RoomRules():
         if self.room.state == RoomState.START: raise JoinWhileLobby()
         else: return True
 
-    def can_play(self, user, /):
+    def can_play(self):
         if len(self.room.users) <= 1: raise RoomMustBeFull()
         else: return True
 
@@ -54,7 +54,7 @@ class Room:
 
     async def play(self, user, /):
         async with self.lock:
-            if self.rules.can_play(user): self.state = RoomState.START
+            if self.rules.can_play(): self.state = RoomState.START
         await self.send({"hook": "play"})
 
     async def send(self, json, /, *, exclude = None):
@@ -104,7 +104,7 @@ class MakeJSON(BaseModel):
 
 class JoinJSON(BaseModel):
     hook: Literal["join"]
-    data: Annotated[str, StringConstraints(pattern = r"^[A-Z0-9]{5}$")]
+    data: Annotated[str, StringConstraints(pattern = r"^[a-z0-9]{5}$")]
 
 class PlayJSON(BaseModel):
     hook: Literal["play"]
@@ -174,3 +174,5 @@ async def websocket(websocket: WebSocket):
 
 @app.head("/")
 async def status(): return Response()
+
+if __name__ == "__main__": from uvicorn import run; run("main:app", reload = True)
