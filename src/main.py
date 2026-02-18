@@ -44,6 +44,17 @@ class Room:
                 self.users.add(user)
                 user.room = self
 
+    async def play(self, game, /):
+        match game:
+            case "room":
+                async with self.lock:
+                    if self.rules.can_play():
+                        self.state = RoomState.START
+                        await self.send({"hook": "play"})
+            case "solo":
+                self.state = RoomState.START
+                await self.send({"hook": "play"})
+
     async def exit(self, user, /):
         async with self.lock:
             if user.room is not self: return
@@ -51,11 +62,6 @@ class Room:
             user.room = None
             void = (len(self.users) == 0)
         if void: app.state.rooms.pop(self.code, None)
-
-    async def play(self, user, /):
-        async with self.lock:
-            if self.rules.can_play(): self.state = RoomState.START
-        await self.send({"hook": "play"})
 
     async def send(self, json, /, *, exclude = None):
         async with self.lock: recipients = [user for user in self.users if user is not exclude]
@@ -75,22 +81,23 @@ class User:
         await self.websocket.close()
 
     async def make(self):
-        self.room = Room(self)
+        if self.room is None:
+            self.room = Room(self)
+            await self.websocket.send_json({"hook": "code", "data": self.room.code})
 
 async def handle(user, json, /):
     match hook := json.get("hook"):
-        case "make":
-            if user.room is None:
-                await user.make()
-                await user.websocket.send_json({"hook": "code", "data": user.room.code})
+        case "make": await user.make()
         case "join":
             old = user.room
             new = app.state.rooms.get(json.get("data"))
             if new is None: raise RoomHasToExist()
             if old is not None and old is not new: await old.exit(user)
             await new.join(user)
-        case "play":
-            if user.room is not None: await user.room.play(user)
+        case "room":
+            if user.room is not None: await user.room.play("room")
+        case "solo":
+            if user.room is not None: await user.room.play("solo")
         case _:
             if user.room is not None: await user.room.send(json, exclude = user if hook in RoomState.AVOID else None)
 
@@ -174,5 +181,3 @@ async def websocket(websocket: WebSocket):
 
 @app.head("/")
 async def status(): return Response()
-
-if __name__ == "__main__": from uvicorn import run; run("main:app", reload = True)
