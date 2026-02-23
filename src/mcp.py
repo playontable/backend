@@ -13,5 +13,3 @@ def index() -> dict:
         "content": [],
         "_meta": {}
     }
-
-if __name__ == "__main__": mcp.run()
