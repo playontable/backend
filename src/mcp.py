@@ -7,6 +7,7 @@ UI = "https://playontable.com/index.html"
 
 @mcp.tool(app = AppConfig(resource_uri = UI))
 def index() -> dict:
+    """Returns the initial content of the web site."""
     return {
         "structuredContent": {},
         "content": [],
