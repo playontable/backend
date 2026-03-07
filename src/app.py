@@ -11,6 +11,10 @@ class RoomState():
     LOBBY = "LOBBY"
     START = "START"
     AVOID = {"drag", "hand", "fall"}
+    DECKS = {
+        "ita": {"1B", "1C", "1D", "1S", "2B", "2C", "2D", "2S", "3B", "3C", "3D", "3S", "4B", "4C", "4D", "4S", "5B", "5C", "5D", "5S", "6B", "6C", "6D", "6S", "7B", "7C", "7D", "7S", "8B", "8C", "8D", "8S", "9B", "9C", "9D", "9S", "10B", "10C", "10D", "10S"},
+        "fra": {}
+    }
 
 class RoomRules():
     def __init__(self, room, /): self.room = room
@@ -44,8 +48,8 @@ class Room:
                 self.users.add(user)
                 user.room = self
 
-    async def play(self, game, /):
-        match game:
+    async def play(self, mode, /):
+        match mode:
             case "room":
                 async with self.lock:
                     if self.rules.can_play():
