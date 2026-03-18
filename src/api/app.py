@@ -2,55 +2,58 @@ from secrets import choice
 from asyncio import Lock, gather
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import Response
+from dataclasses import dataclass, field
 from contextlib import asynccontextmanager
 from logging import ERROR, getLogger, basicConfig
 from typing import Union, Literal, Optional, Annotated
 from pydantic import Field, BaseModel, TypeAdapter, NonNegativeInt, ValidationError, StringConstraints
 
-class RoomState():
-    START = False
-    AVOID = ("drag", "hand", "fall")
-    DECKS = {
-        "ita": (
-            "01B", "01C", "01D", "01S",
-            "02B", "02C", "02D", "02S",
-            "03B", "03C", "03D", "03S",
-            "04B", "04C", "04D", "04S",
-            "05B", "05C", "05D", "05S",
-            "06B", "06C", "06D", "06S",
-            "07B", "07C", "07D", "07S",
-            "08B", "08C", "08D", "08S",
-            "09B", "09C", "09D", "09S",
-            "10B", "10C", "10D", "10S"
-        ),
-        "fra": (
-            "01C", "01D", "01H", "01S",
-            "02C", "02D", "02H", "02S",
-            "03C", "03D", "03H", "03S",
-            "04C", "04D", "04H", "04S",
-            "05C", "05D", "05H", "05S",
-            "06C", "06D", "06H", "06S",
-            "07C", "07D", "07H", "07S",
-            "08C", "08D", "08H", "08S",
-            "09C", "09D", "09H", "09S",
-            "10C", "10D", "10H", "10S",
-            "JC", "JD", "JH", "JS",
-            "QC", "QD", "QH", "QS",
-            "KC", "KD", "KH", "KS",
-            "XB", "XR"
-        )
-    }
-    DRAWN = {}
+DECKS = {
+    "ita": (
+        "01B", "01C", "01D", "01S",
+        "02B", "02C", "02D", "02S",
+        "03B", "03C", "03D", "03S",
+        "04B", "04C", "04D", "04S",
+        "05B", "05C", "05D", "05S",
+        "06B", "06C", "06D", "06S",
+        "07B", "07C", "07D", "07S",
+        "08B", "08C", "08D", "08S",
+        "09B", "09C", "09D", "09S",
+        "10B", "10C", "10D", "10S"
+    ),
+    "fra": (
+        "01C", "01D", "01H", "01S",
+        "02C", "02D", "02H", "02S",
+        "03C", "03D", "03H", "03S",
+        "04C", "04D", "04H", "04S",
+        "05C", "05D", "05H", "05S",
+        "06C", "06D", "06H", "06S",
+        "07C", "07D", "07H", "07S",
+        "08C", "08D", "08H", "08S",
+        "09C", "09D", "09H", "09S",
+        "10C", "10D", "10H", "10S",
+        "JC", "JD", "JH", "JS",
+        "QC", "QD", "QH", "QS",
+        "KC", "KD", "KH", "KS",
+        "XB", "XR"
+    )
+}
+
+@dataclass
+class RoomState:
+    start = False
+    avoid = ("drag", "hand", "fall")
+    drawn = field(default_factory = dict)
 
 class RoomRules():
     def __init__(self, room, /): self.room = room
 
     def can_join(self):
-        if self.state.START: raise JoinWhileLobby()
+        if self.room.state.start: raise JoinWhileLobby()
         else: return True
 
     def can_play(self):
-        if len(self.users) <= 1: raise RoomMustBeFull()
+        if len(self.room.users) <= 1: raise RoomMustBeFull()
         else: return True
 
 class RoomFails(Exception): reason = None
@@ -79,10 +82,10 @@ class Room:
             case "room":
                 async with self.lock:
                     if self.rules.can_play():
-                        self.state.START = True
+                        self.state.start = True
                         await self.send({"hook": "play"})
             case "solo":
-                self.state.START = True
+                self.state.start = True
                 await self.send({"hook": "play"})
 
     async def exit(self, user, /):
@@ -119,12 +122,11 @@ async def handle(user, json, /):
     match hook := json.get("hook"):
         case "host": await user.host()
         case "join":
-            if new := app.state.rooms.get(json.get("data")) is None: raise RoomHasToExist()
+            if (new := app.state.rooms.get(json.get("data"))) is None: raise RoomHasToExist()
             if user.room is not None and user.room is not new: await user.room.exit(user)
             await new.join(user)
-        case "room" if user.room is not None: await user.room.play("room")
-        case "solo" if user.room is not None: await user.room.play("solo")
-        case _ if user.room is not None: await user.room.send(json, exclude = user if hook in user.room.state.AVOID else None)
+        case "play" if user.room is not None: await user.room.play(json.get("mode"))
+        case "drop" | "rool" | "wipe" | "step" | "drag" | "copy" if user.room is not None: await user.room.send(json, exclude = user if hook in user.room.state.AVOID else None)
 
 class XYZIndex(BaseModel):
     x: float
@@ -136,10 +138,11 @@ class HostJSON(BaseModel):
 
 class JoinJSON(BaseModel):
     hook: Literal["join"]
-    data: Annotated[str, StringConstraints(pattern = r"^[a-z0-9]{5}$")]
+    data: Annotated[str, StringConstraints(pattern = r"^[A-Z0-9]{5}$")]
 
 class PlayJSON(BaseModel):
     hook: Literal["play"]
+    mode: Literal["room", "solo"]
 
 class DropJSON(BaseModel):
     hook: Literal["drop"]
@@ -202,7 +205,8 @@ async def websocket(websocket: WebSocket):
         async for json in websocket.iter_json():
             try: await handle(user, adapter.validate_python(json).model_dump())
             except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
-            except ValidationError as info: logger.error("ValidationError\n\nUSER = %s\nJSON = %s\nINFO = %s\n\n", getattr(user, "websocket"), json, info.errors()[0]["msg"])
+            except ValidationError as info:
+                for error in info.errors(): logger.error("ValidationError\n\nUSER = %s\nJSON = %s\nINFO = %s\n\n", getattr(user, "websocket"), json, error["msg"])
 
 @app.head("/")
 async def status(): return Response()
