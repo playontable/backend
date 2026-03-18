@@ -41,9 +41,8 @@ DECKS = {
 
 @dataclass
 class RoomState:
-    start = False
-    avoid = ("drag", "hand", "fall")
-    drawn = field(default_factory = dict)
+    start: bool = False
+    drawn: dict[int, set[str]] = field(default_factory = dict)
 
 class RoomRules():
     def __init__(self, room, /): self.room = room
@@ -126,7 +125,7 @@ async def handle(user, json, /):
             if user.room is not None and user.room is not new: await user.room.exit(user)
             await new.join(user)
         case "play" if user.room is not None: await user.room.play(json.get("mode"))
-        case "drop" | "rool" | "wipe" | "step" | "drag" | "copy" if user.room is not None: await user.room.send(json, exclude = user if hook in user.room.state.AVOID else None)
+        case "drop" | "roll" | "wipe" | "step" | "drag" | "copy" if user.room is not None: await user.room.send(json, exclude = user if hook in ("drag", "hand", "fall") else None)
 
 class XYZIndex(BaseModel):
     x: float
