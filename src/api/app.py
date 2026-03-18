@@ -77,13 +77,11 @@ class Room:
                 user.room = self
 
     async def play(self, mode, /):
-        sendable = False
         async with self.lock:
-            if not self.state.start:
-                if mode == "room": self.rules.can_play()
-                self.state.start = True
-                sendable = True
-        if sendable: await self.send({"hook": "play"})
+            if self.state.start: return
+            if mode == "room": self.rules.can_play()
+            self.state.start = True
+        await self.send({"hook": "play"})
 
     async def exit(self, user, /):
         async with self.lock:
