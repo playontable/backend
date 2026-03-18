@@ -82,12 +82,11 @@ class RoomManager:
         async with self.lock: self.rooms.clear()
 
 class Room:
-    def __init__(self, code, host, manager):
+    def __init__(self, code, host):
         self.code = code
         self.host = host
         self.lock = Lock()
         self.users = {host}
-        self.manager = manager
         self.state = RoomState()
         self.rules = RoomRules(self)
 
@@ -110,7 +109,7 @@ class Room:
             self.users.discard(user)
             user.room = None
             if self.users: return
-        await self.manager.pop(self.code)
+        await RoomManager.pop(self.code)
 
     async def send(self, json, /, *, exclude = None):
         async with self.lock: recipients = [user for user in self.users if user is not exclude]
