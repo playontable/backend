@@ -65,7 +65,7 @@ class RoomManager:
         self.rooms = {}
         self.lock = Lock()
 
-    async def create(self, user, /):
+    async def set(self, user, /):
         async with self.lock:
             while (code := "".join(choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(5))) in self.rooms: pass
             room = Room(code, user, self)
@@ -75,10 +75,10 @@ class RoomManager:
     async def get(self, code, /):
         async with self.lock: return self.rooms.get(code)
 
-    async def remove(self, code, /):
+    async def pop(self, code, /):
         async with self.lock: self.rooms.pop(code, None)
 
-    async def clear(self):
+    async def end(self):
         async with self.lock: self.rooms.clear()
 
 class Room:
@@ -110,7 +110,7 @@ class Room:
             self.users.discard(user)
             user.room = None
             if self.users: return
-        await self.manager.remove(self.code)
+        await self.manager.pop(self.code)
 
     async def send(self, json, /, *, exclude = None):
         async with self.lock: recipients = [user for user in self.users if user is not exclude]
@@ -138,7 +138,7 @@ async def handle(user, json, /):
     match hook := json.get("hook"):
         case "host": await user.host()
         case "join":
-            if (new := app.state.room_manager.get(json.get("data"))) is None: raise RoomHasToExist()
+            if (new := app.state.room_manager.set(json.get("data"))) is None: raise RoomHasToExist()
             if user.room is not None and user.room is not new: await user.room.exit(user)
             await new.join(user)
         case "play" if user.room is not None: await user.room.play(json.get("mode"))
@@ -211,7 +211,7 @@ logger = getLogger("WebSocket")
 async def lifespan(app):
     app.state.room_manager = RoomManager()
     yield
-    await app.state.room_manager.clear()
+    await app.state.room_manager.end()
 
 app = FastAPI(lifespan = lifespan, openapi_url = None)
 
