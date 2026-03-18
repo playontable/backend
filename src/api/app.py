@@ -44,7 +44,7 @@ class RoomState:
     start: bool = False
     drawn: dict[int, set[str]] = field(default_factory = dict)
 
-class RoomRules():
+class RoomRules:
     def __init__(self, room, /): self.room = room
 
     def can_join(self):
@@ -60,13 +60,34 @@ class RoomHasToExist(RoomFails): reason = "none"
 class JoinWhileLobby(RoomFails): reason = "play"
 class RoomMustBeFull(RoomFails): reason = "void"
 
-class Room:
-    def __init__(self, user, /):
-        while app.state.rooms.setdefault(code := "".join(choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(5)), self) is not self: pass
-        self.code = code
-        self.host = user
+class RoomManager:
+    def __init__(self):
+        self.rooms = {}
         self.lock = Lock()
-        self.users = {user}
+
+    async def create(self, user, /):
+        async with self.lock:
+            while (code := "".join(choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(5))) in self.rooms: pass
+            room = Room(code, user, self)
+            self.rooms[code] = room
+            return room
+
+    async def get(self, code, /):
+        async with self.lock: return self.rooms.get(code)
+
+    async def remove(self, code, /):
+        async with self.lock: self.rooms.pop(code, None)
+
+    async def clear(self):
+        async with self.lock: self.rooms.clear()
+
+class Room:
+    def __init__(self, code, host, manager):
+        self.code = code
+        self.host = host
+        self.lock = Lock()
+        self.users = {host}
+        self.manager = manager
         self.state = RoomState()
         self.rules = RoomRules(self)
 
@@ -88,8 +109,8 @@ class Room:
             if user.room is not self: return
             self.users.discard(user)
             user.room = None
-            void = (len(self.users) == 0)
-        if void: app.state.rooms.pop(self.code, None)
+            if self.users: return
+        await self.manager.remove(self.code)
 
     async def send(self, json, /, *, exclude = None):
         async with self.lock: recipients = [user for user in self.users if user is not exclude]
@@ -110,14 +131,14 @@ class User:
 
     async def host(self):
         if self.room is None:
-            self.room = Room(self)
+            self.room = await app.state.room_manager.create(self)
             await self.websocket.send_json({"hook": "code", "data": self.room.code})
 
 async def handle(user, json, /):
     match hook := json.get("hook"):
         case "host": await user.host()
         case "join":
-            if (new := app.state.rooms.get(json.get("data"))) is None: raise RoomHasToExist()
+            if (new := app.state.room_manager.get(json.get("data"))) is None: raise RoomHasToExist()
             if user.room is not None and user.room is not new: await user.room.exit(user)
             await new.join(user)
         case "play" if user.room is not None: await user.room.play(json.get("mode"))
@@ -188,9 +209,9 @@ logger = getLogger("WebSocket")
 
 @asynccontextmanager
 async def lifespan(app):
-    app.state.rooms = {}
+    app.state.room_manager = RoomManager()
     yield
-    app.state.rooms.clear()
+    await app.state.room_manager.clear()
 
 app = FastAPI(lifespan = lifespan, openapi_url = None)
 
