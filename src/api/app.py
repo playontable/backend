@@ -8,11 +8,10 @@ from typing import Union, Literal, Optional, Annotated
 from pydantic import Field, BaseModel, TypeAdapter, NonNegativeInt, ValidationError, StringConstraints
 
 class RoomState():
-    LOBBY = "LOBBY"
-    START = "START"
-    AVOID = {"drag", "hand", "fall"}
+    START = False
+    AVOID = ("drag", "hand", "fall")
     DECKS = {
-        "ita": {
+        "ita": (
             "01B", "01C", "01D", "01S",
             "02B", "02C", "02D", "02S",
             "03B", "03C", "03D", "03S",
@@ -22,9 +21,9 @@ class RoomState():
             "07B", "07C", "07D", "07S",
             "08B", "08C", "08D", "08S",
             "09B", "09C", "09D", "09S",
-            "10B", "10C", "10D", "10S",
-        },
-        "fra": {
+            "10B", "10C", "10D", "10S"
+        ),
+        "fra": (
             "01C", "01D", "01H", "01S",
             "02C", "02D", "02H", "02S",
             "03C", "03D", "03H", "03S",
@@ -38,19 +37,20 @@ class RoomState():
             "JC", "JD", "JH", "JS",
             "QC", "QD", "QH", "QS",
             "KC", "KD", "KH", "KS",
-            "XB", "XR",
-        }
+            "XB", "XR"
+        )
     }
+    DRAWN = {}
 
 class RoomRules():
     def __init__(self, room, /): self.room = room
 
     def can_join(self):
-        if self.room.state == RoomState.START: raise JoinWhileLobby()
+        if self.state.START: raise JoinWhileLobby()
         else: return True
 
     def can_play(self):
-        if len(self.room.users) <= 1: raise RoomMustBeFull()
+        if len(self.users) <= 1: raise RoomMustBeFull()
         else: return True
 
 class RoomFails(Exception): reason = None
@@ -65,7 +65,7 @@ class Room:
         self.host = user
         self.lock = Lock()
         self.users = {user}
-        self.state = RoomState.LOBBY
+        self.state = RoomState()
         self.rules = RoomRules(self)
 
     async def join(self, user, /):
@@ -79,10 +79,10 @@ class Room:
             case "room":
                 async with self.lock:
                     if self.rules.can_play():
-                        self.state = RoomState.START
+                        self.state.START = True
                         await self.send({"hook": "play"})
             case "solo":
-                self.state = RoomState.START
+                self.state.START = True
                 await self.send({"hook": "play"})
 
     async def exit(self, user, /):
@@ -110,34 +110,29 @@ class User:
         if self.room is not None: await self.room.exit(self)
         await self.websocket.close()
 
-    async def make(self):
+    async def host(self):
         if self.room is None:
             self.room = Room(self)
             await self.websocket.send_json({"hook": "code", "data": self.room.code})
 
 async def handle(user, json, /):
     match hook := json.get("hook"):
-        case "make": await user.make()
+        case "host": await user.host()
         case "join":
-            old = user.room
-            new = app.state.rooms.get(json.get("data"))
-            if new is None: raise RoomHasToExist()
-            if old is not None and old is not new: await old.exit(user)
+            if new := app.state.rooms.get(json.get("data")) is None: raise RoomHasToExist()
+            if user.room is not None and user.room is not new: await user.room.exit(user)
             await new.join(user)
-        case "room":
-            if user.room is not None: await user.room.play("room")
-        case "solo":
-            if user.room is not None: await user.room.play("solo")
-        case _:
-            if user.room is not None: await user.room.send(json, exclude = user if hook in RoomState.AVOID else None)
+        case "room" if user.room is not None: await user.room.play("room")
+        case "solo" if user.room is not None: await user.room.play("solo")
+        case _ if user.room is not None: await user.room.send(json, exclude = user if hook in user.room.state.AVOID else None)
 
 class XYZIndex(BaseModel):
     x: float
     y: float
     zIndex: Optional[int] = None
 
-class MakeJSON(BaseModel):
-    hook: Literal["make"]
+class HostJSON(BaseModel):
+    hook: Literal["host"]
 
 class JoinJSON(BaseModel):
     hook: Literal["join"]
@@ -176,7 +171,7 @@ class CopyJSON(BaseModel):
 adapter = TypeAdapter(
     Annotated[
         Union[
-            MakeJSON,
+            HostJSON,
             JoinJSON,
             PlayJSON,
             DropJSON,
