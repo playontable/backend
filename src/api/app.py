@@ -52,13 +52,13 @@ class RoomRules:
         else: return True
 
     def can_play(self):
-        if len(self.room.users) <= 1: raise RoomMustBeFull()
+        if len(self.room.users) <= 1: raise RoomNotBeEmpty()
         else: return True
 
 class RoomFails(Exception): reason = None
 class RoomHasToExist(RoomFails): reason = "none"
 class JoinWhileLobby(RoomFails): reason = "play"
-class RoomMustBeFull(RoomFails): reason = "void"
+class RoomNotBeEmpty(RoomFails): reason = "void"
 
 class RoomManager:
     def __init__(self):
@@ -68,7 +68,7 @@ class RoomManager:
     async def set(self, user, /):
         async with self.lock:
             while (code := "".join(choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(5))) in self.rooms: pass
-            room = Room(code, user, self)
+            room = Room(code, user)
             self.rooms[code] = room
             return room
 
@@ -130,14 +130,14 @@ class User:
 
     async def host(self):
         if self.room is None:
-            self.room = await app.state.room_manager.create(self)
+            self.room = await app.state.room_manager.set(self)
             await self.websocket.send_json({"hook": "code", "data": self.room.code})
 
 async def handle(user, json, /):
     match hook := json.get("hook"):
         case "host": await user.host()
         case "join":
-            if (new := app.state.room_manager.set(json.get("data"))) is None: raise RoomHasToExist()
+            if (new := app.state.room_manager.get(json.get("data"))) is None: raise RoomHasToExist()
             if user.room is not None and user.room is not new: await user.room.exit(user)
             await new.join(user)
         case "play" if user.room is not None: await user.room.play(json.get("mode"))
