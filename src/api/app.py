@@ -109,7 +109,7 @@ class Room:
             self.users.discard(user)
             user.room = None
             if self.users: return
-        await RoomManager.pop(self.code)
+        await app.state.room_manager.pop(self.code)
 
     async def send(self, json, /, *, exclude = None):
         async with self.lock: recipients = [user for user in self.users if user is not exclude]
@@ -137,7 +137,7 @@ async def handle(user, json, /):
     match hook := json.get("hook"):
         case "host": await user.host()
         case "join":
-            if (new := app.state.room_manager.get(json.get("data"))) is None: raise RoomHasToExist()
+            if (new := await app.state.room_manager.get(json.get("data"))) is None: raise RoomHasToExist()
             if user.room is not None and user.room is not new: await user.room.exit(user)
             await new.join(user)
         case "play" if user.room is not None: await user.room.play(json.get("mode"))
