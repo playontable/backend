@@ -144,7 +144,7 @@ async def handle(user, json, /):
             if user.room is not None and user.room is not new: await user.room.exit(user)
             await new.join(user)
         case "play" if user.room is not None and user is user.room.host: await user.room.play()
-        case "drop" | "roll" | "wipe" | "step" | "drag" | "copy" if user.room is not None: await user.room.send(json, exclude = user if hook in ("drag", "hand", "fall") else None)
+        case "step" | "drag" | "copy" | "hand" | "fall" | "draw" | "flip" | "roll" | "wipe" if user.room is not None: await user.room.send(json, exclude = user if hook in ("drag", "hand", "fall") else None)
 
 class XYZIndex(BaseModel):
     x: float
@@ -162,19 +162,6 @@ class JoinJSON(BaseModel):
 class PlayJSON(BaseModel):
     hook: Literal["play"]
 
-class DropJSON(BaseModel):
-    hook: Literal["drop"]
-    index: NonNegativeInt
-
-class RollJSON(BaseModel):
-    hook: Literal["roll"]
-    data: Annotated[list[Annotated[int, Field(ge = 1, le = 6)]], Field(min_length = 6, max_length = 6)]
-    index: NonNegativeInt
-
-class WipeJSON(BaseModel):
-    hook: Literal["wipe"]
-    index: NonNegativeInt
-
 class StepJSON(BaseModel):
     hook: Literal["step"]
     index: NonNegativeInt
@@ -189,18 +176,46 @@ class CopyJSON(BaseModel):
     data: XYZIndex
     index: NonNegativeInt
 
+class HandJSON(BaseModel):
+    hook: Literal["hand"]
+    index: NonNegativeInt
+
+class FallJSON(BaseModel):
+    hook: Literal["fall"]
+    index: NonNegativeInt
+
+class DrawJSON(BaseModel):
+    hook: Literal["draw"]
+    index: NonNegativeInt
+
+class FlipJSON(BaseModel):
+    hook: Literal["flip"]
+    index: NonNegativeInt
+
+class RollJSON(BaseModel):
+    hook: Literal["roll"]
+    data: Annotated[list[Annotated[int, Field(ge = 1, le = 6)]], Field(min_length = 6, max_length = 6)]
+    index: NonNegativeInt
+
+class WipeJSON(BaseModel):
+    hook: Literal["wipe"]
+    index: NonNegativeInt
+
 adapter = TypeAdapter(
     Annotated[
         Union[
             HostJSON,
             JoinJSON,
             PlayJSON,
-            DropJSON,
-            RollJSON,
-            WipeJSON,
             StepJSON,
             DragJSON,
-            CopyJSON
+            CopyJSON,
+            HandJSON,
+            FallJSON,
+            DrawJSON,
+            FlipJSON,
+            RollJSON,
+            WipeJSON
         ],
         Field(discriminator = "hook")
     ]
