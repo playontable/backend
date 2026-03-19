@@ -48,17 +48,17 @@ class RoomRules:
     def __init__(self, room, /): self.room = room
 
     def can_join(self):
-        if self.room.state.start: raise JoinWhileLobby()
-        else: return True
+        if not self.room.state.start: return True
+        else: raise YouCannotJoin()
 
     def can_play(self):
-        if len(self.room.users) <= 1: raise RoomNotBeEmpty()
-        else: return True
+        if len(self.room.users) > 1 and not self.room.state.start: return True
+        else: raise YouCannotPlay()
 
 class RoomFails(Exception): reason = None
-class RoomHasToExist(RoomFails): reason = "none"
-class JoinWhileLobby(RoomFails): reason = "play"
-class RoomNotBeEmpty(RoomFails): reason = "void"
+class RoomNotExists(RoomFails): reason = "none"
+class YouCannotJoin(RoomFails): reason = "play"
+class YouCannotPlay(RoomFails): reason = "void"
 
 class RoomManager:
     def __init__(self):
@@ -68,7 +68,7 @@ class RoomManager:
     async def set(self, user, /):
         async with self.lock:
             while (code := "".join(choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(5))) in self.rooms: pass
-            room = Room(code, user)
+            room = Room(code, user, self)
             self.rooms[code] = room
             return room
 
@@ -82,24 +82,24 @@ class RoomManager:
         async with self.lock: self.rooms.clear()
 
 class Room:
-    def __init__(self, code, host):
+    def __init__(self, code, host, manager, /):
         self.code = code
         self.host = host
         self.lock = Lock()
         self.users = {host}
+        self.manager = manager
         self.state = RoomState()
         self.rules = RoomRules(self)
 
     async def join(self, user, /):
         async with self.lock:
-            if self.rules.can_join():
-                self.users.add(user)
-                user.room = self
+            self.rules.can_join()
+            self.users.add(user)
+            user.room = self
 
-    async def play(self, mode, /):
+    async def play(self):
         async with self.lock:
-            if self.state.start: return
-            if mode == "room": self.rules.can_play()
+            self.rules.can_play()
             self.state.start = True
         await self.send({"hook": "play"})
 
@@ -109,15 +109,16 @@ class Room:
             self.users.discard(user)
             user.room = None
             if self.users: return
-        await app.state.room_manager.pop(self.code)
+        await self.manager.pop(self.code)
 
     async def send(self, json, /, *, exclude = None):
         async with self.lock: recipients = [user for user in self.users if user is not exclude]
         await gather(*(user.websocket.send_json(json) for user in recipients), return_exceptions = True)
 
 class User:
-    def __init__(self, websocket, /):
+    def __init__(self, manager, websocket, /):
         self.room = None
+        self.manager = manager
         self.websocket = websocket
 
     async def __aenter__(self):
@@ -128,19 +129,21 @@ class User:
         if self.room is not None: await self.room.exit(self)
         await self.websocket.close()
 
-    async def host(self):
-        if self.room is None:
-            self.room = await app.state.room_manager.set(self)
-            await self.websocket.send_json({"hook": "code", "data": self.room.code})
+    async def host(self, mode, /):
+        match mode:
+            case "room" if self.room is None:
+                self.room = await self.manager.set(self)
+                await self.websocket.send_json({"hook": "code", "data": self.room.code})
+            case "solo": await self.websocket.send_json({"hook": "play"})
 
 async def handle(user, json, /):
     match hook := json.get("hook"):
-        case "host": await user.host()
+        case "host": await user.host(json.get("mode"))
         case "join":
-            if (new := await app.state.room_manager.get(json.get("data"))) is None: raise RoomHasToExist()
+            if (new := await user.manager.get(json.get("data"))) is None: raise RoomNotExists()
             if user.room is not None and user.room is not new: await user.room.exit(user)
             await new.join(user)
-        case "play" if user.room is not None: await user.room.play(json.get("mode"))
+        case "play" if user.room is not None and user is user.room.host: await user.room.play()
         case "drop" | "roll" | "wipe" | "step" | "drag" | "copy" if user.room is not None: await user.room.send(json, exclude = user if hook in ("drag", "hand", "fall") else None)
 
 class XYZIndex(BaseModel):
@@ -150,6 +153,7 @@ class XYZIndex(BaseModel):
 
 class HostJSON(BaseModel):
     hook: Literal["host"]
+    mode: Literal["room", "solo"]
 
 class JoinJSON(BaseModel):
     hook: Literal["join"]
@@ -157,7 +161,6 @@ class JoinJSON(BaseModel):
 
 class PlayJSON(BaseModel):
     hook: Literal["play"]
-    mode: Literal["room", "solo"]
 
 class DropJSON(BaseModel):
     hook: Literal["drop"]
@@ -208,15 +211,15 @@ logger = getLogger("WebSocket")
 
 @asynccontextmanager
 async def lifespan(app):
-    app.state.room_manager = RoomManager()
+    app.state.manager = RoomManager()
     yield
-    await app.state.room_manager.end()
+    await app.state.manager.end()
 
 app = FastAPI(lifespan = lifespan, openapi_url = None)
 
 @app.websocket("/websocket/")
 async def websocket(websocket: WebSocket):
-    async with User(websocket) as user:
+    async with User( websocket.app.state.manager, websocket) as user:
         async for json in websocket.iter_json():
             try: await handle(user, adapter.validate_python(json).model_dump())
             except RoomFails as fail: await user.websocket.send_json({"hook": "fail", "data": fail.reason})
