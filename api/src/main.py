@@ -1,7 +1,7 @@
-from play.user import User
-from utils.handler import handle
-from utils.monitor import logger
-from utils.schema import adapter
+from .play.user import User
+from .utils.handler import handle
+from .utils.monitor import logger
+from .utils.schema import adapter
 from pydantic import ValidationError
 from fastapi.responses import Response
 from contextlib import asynccontextmanager
@@ -9,7 +9,7 @@ from fastapi import (
     FastAPI,
     WebSocket
 )
-from play.room import (
+from .play.room import (
     RoomManager,
     RoomError
 )
