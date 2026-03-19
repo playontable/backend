@@ -1,4 +1,5 @@
 from secrets import choice
+from random import shuffle
 from asyncio import Lock, gather
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import Response
@@ -133,18 +134,21 @@ class User:
         match mode:
             case "room" if self.room is None:
                 self.room = await self.manager.set(self)
-                await self.websocket.send_json({"hook": "code", "data": self.room.code})
+                await self.websocket.send_json({"hook": "code", "code": self.room.code})
             case "solo": await self.websocket.send_json({"hook": "play"})
 
 async def handle(user, json, /):
     match hook := json.get("hook"):
         case "host": await user.host(json.get("mode"))
         case "join":
-            if (new := await user.manager.get(json.get("data"))) is None: raise RoomNotExists()
+            if (new := await user.manager.get(json.get("code"))) is None: raise RoomNotExists()
             if user.room is not None and user.room is not new: await user.room.exit(user)
             await new.join(user)
         case "play" if user.room is not None and user is user.room.host: await user.room.play()
-        case "step" | "drag" | "copy" | "hand" | "fall" | "draw" | "flip" | "roll" | "wipe" if user.room is not None: await user.room.send(json, exclude = user if hook in ("drag", "hand", "fall") else None)
+        case "draw": pass
+        case "flip": pass
+        case "roll": user.room.send({"hook": "roll", "dice": shuffle([1, 2, 3, 4, 5, 6])})
+        case "step" | "drag" | "copy" | "hand" | "fall" | "wipe" if user.room is not None: await user.room.send(json, exclude = user if hook in ("drag", "hand", "fall") else None)
 
 class XYZIndex(BaseModel):
     x: float
@@ -157,7 +161,7 @@ class HostJSON(BaseModel):
 
 class JoinJSON(BaseModel):
     hook: Literal["join"]
-    data: Annotated[str, StringConstraints(pattern = r"^[A-Z0-9]{5}$")]
+    code: Annotated[str, StringConstraints(pattern = r"^[A-Z0-9]{5}$")]
 
 class PlayJSON(BaseModel):
     hook: Literal["play"]
@@ -194,7 +198,6 @@ class FlipJSON(BaseModel):
 
 class RollJSON(BaseModel):
     hook: Literal["roll"]
-    data: Annotated[list[Annotated[int, Field(ge = 1, le = 6)]], Field(min_length = 6, max_length = 6)]
     index: NonNegativeInt
 
 class WipeJSON(BaseModel):
