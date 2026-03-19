@@ -1,5 +1,5 @@
 from random import shuffle
-from ..room.fails import RoomNotExists
+from ..play.room import RoomNotExists
 
 async def handle(user, json, /):
     match hook := json.get("hook"):
