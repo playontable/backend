@@ -16,7 +16,7 @@ class User:
         match mode:
             case "room" if self.room is None:
                 self.room = await self.manager.set(self)
-                await self.websocket.send_json({"hook": "code", "code": self.room.code})
+                await self.websocket.send_json({"hook": "code", "data": self.room.code})
             case "solo":
                 self.room = await self.manager.set(self)
                 await self.websocket.send_json({"hook": "play"})
