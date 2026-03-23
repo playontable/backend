@@ -13,10 +13,6 @@ class User:
         await self.websocket.close()
 
     async def host(self, mode, /):
-        match mode:
-            case "room" if self.room is None:
-                self.room = await self.manager.set(self)
-                await self.websocket.send_json({"hook": "code", "data": self.room.code})
-            case "solo":
-                self.room = await self.manager.set(self)
-                await self.websocket.send_json({"hook": "play"})
+        if mode in ("room", "solo"):
+            self.room = self.room or await self.manager.set(self)
+            await self.websocket.send_json({"hook": "room", "data": {"code": self.room.code}} if mode == "room" else {"hook": "play", "data": {}})

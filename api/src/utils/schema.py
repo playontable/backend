@@ -17,54 +17,61 @@ class XYZIndex(BaseModel):
     y: float
     zIndex: Optional[int] = None
 
+class PlayData(BaseModel): pass
+class ItemData(BaseModel): item: NonNegativeInt
+class HostData(BaseModel): mode: Literal["room", "solo"]
+class JoinData(BaseModel): code: Annotated[str, StringConstraints(pattern=r"^[A-Z0-9]{5}$")]
+class DotsData(BaseModel):
+    item: NonNegativeInt
+    dots: XYZIndex
+
 class HostJSON(BaseModel):
     hook: Literal["host"]
-    mode: Literal["room", "solo"]
+    data: HostData
 
 class JoinJSON(BaseModel):
     hook: Literal["join"]
-    code: Annotated[str, StringConstraints(pattern = r"^[A-Z0-9]{5}$")]
+    data: JoinData
 
 class PlayJSON(BaseModel):
     hook: Literal["play"]
+    data: PlayData = PlayData()
 
 class StepJSON(BaseModel):
     hook: Literal["step"]
-    index: NonNegativeInt
+    data: ItemData
 
 class DragJSON(BaseModel):
     hook: Literal["drag"]
-    data: XYZIndex
-    index: NonNegativeInt
+    data: DotsData
 
 class CopyJSON(BaseModel):
     hook: Literal["copy"]
-    data: XYZIndex
-    index: NonNegativeInt
+    data: DotsData
 
 class HandJSON(BaseModel):
     hook: Literal["hand"]
-    index: NonNegativeInt
+    data: ItemData
 
 class FallJSON(BaseModel):
     hook: Literal["fall"]
-    index: NonNegativeInt
+    data: ItemData
 
 class DrawJSON(BaseModel):
     hook: Literal["draw"]
-    index: NonNegativeInt
+    data: ItemData
 
 class FlipJSON(BaseModel):
     hook: Literal["flip"]
-    index: NonNegativeInt
+    data: ItemData
 
 class RollJSON(BaseModel):
     hook: Literal["roll"]
-    index: NonNegativeInt
+    data: ItemData
 
 class WipeJSON(BaseModel):
     hook: Literal["wipe"]
-    index: NonNegativeInt
+    data: ItemData
 
 adapter = TypeAdapter(
     Annotated[

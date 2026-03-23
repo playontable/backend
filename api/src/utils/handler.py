@@ -11,5 +11,5 @@ async def handle(user, json, /):
         case "play" if user.room is not None and user is user.room.host: await user.room.play()
         case "draw": pass
         case "flip": pass
-        case "roll": await user.room.send({"hook": "roll", "data": shuffle([1, 2, 3, 4, 5, 6])})
+        case "roll": await user.room.send({"hook": "roll", "data": {"dice": shuffle([1, 2, 3, 4, 5, 6])}})
         case "step" | "drag" | "copy" | "hand" | "fall" | "wipe" if user.room is not None: await user.room.send(json, exclude = user if hook in ("drag", "hand", "fall") else None)
