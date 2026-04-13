@@ -23,7 +23,14 @@ class HostData(BaseModel): mode: Literal["room", "solo"]
 class JoinData(BaseModel): code: Annotated[str, StringConstraints(pattern=r"^[A-Z0-9]{5}$")]
 class DotsData(BaseModel):
     item: NonNegativeInt
-    dots: XYZIndex
+    x: float
+    y: float
+    zIndex: Optional[int] = None
+class DrawData(BaseModel):
+    item: NonNegativeInt
+    deck: Literal["ita", "fra"]
+    color: Optional[Literal["blue", "red"]] = None
+    jolly: bool = False
 
 class HostJSON(BaseModel):
     hook: Literal["host"]
@@ -59,7 +66,7 @@ class FallJSON(BaseModel):
 
 class DrawJSON(BaseModel):
     hook: Literal["draw"]
-    data: ItemData
+    data: DrawData
 
 class FlipJSON(BaseModel):
     hook: Literal["flip"]
