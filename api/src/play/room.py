@@ -121,6 +121,14 @@ class Room:
         if host is False: await self.manager.pop(self.code)
         elif host is not None: await host.websocket.send_json({"hook": "room", "data": {"code": self.code}})
 
+    async def close(self, /, *, exclude = None):
+        async with self.lock:
+            users = [user for user in self.users if user is not exclude]
+            for user in self.users: user.room = None
+            self.users.clear()
+        await self.manager.pop(self.code)
+        await gather(*(user.websocket.send_json({"hook": "exit", "data": {}}) for user in users), return_exceptions = True)
+
     async def draw(self, data, /):
         async with self.lock:
             drawn = self.state.drawn.setdefault(data.get("item"), set())

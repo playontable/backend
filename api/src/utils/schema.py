@@ -40,6 +40,10 @@ class JoinJSON(BaseModel):
     hook: Literal["join"]
     data: JoinData
 
+class ExitJSON(BaseModel):
+    hook: Literal["exit"]
+    data: PlayData = PlayData()
+
 class PlayJSON(BaseModel):
     hook: Literal["play"]
     data: PlayData = PlayData()
@@ -85,6 +89,7 @@ adapter = TypeAdapter(
         Union[
             HostJSON,
             JoinJSON,
+            ExitJSON,
             PlayJSON,
             StepJSON,
             DragJSON,

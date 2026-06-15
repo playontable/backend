@@ -14,5 +14,6 @@ class User:
 
     async def host(self, mode, /):
         if mode in ("room", "solo"):
-            self.room = self.room or await self.manager.set(self)
+            if self.room is not None: await self.room.exit(self)
+            self.room = await self.manager.set(self)
             await self.websocket.send_json({"hook": "room", "data": {"code": self.room.code}} if mode == "room" else {"hook": "play", "data": {}})
