@@ -22,7 +22,7 @@ async def lifespan(app):
 
 app = FastAPI(lifespan = lifespan, openapi_url = None)
 
-@app.websocket("/websocket/")
+@app.websocket("/api/websocket/")
 async def websocket(websocket: WebSocket):
     async with User( websocket.app.state.manager, websocket) as user:
         async for json in websocket.iter_json():
