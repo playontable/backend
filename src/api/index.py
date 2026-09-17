@@ -31,5 +31,6 @@ async def websocket(websocket: WebSocket):
             except ValidationError as info:
                 for error in info.errors(): logger.error("ValidationError\n\nUSER = %s\nJSON = %s\nINFO = %s\n\n", getattr(user, "websocket"), json, error["msg"])
 
-@app.head("/")
-async def status(): return Response()
+@app.get("/")
+def status():
+    return {"status": "online"}
