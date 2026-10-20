@@ -140,7 +140,7 @@ class Room:
                 available = list(deck)
             card = choice(available)
             drawn.add(card)
-        await self.send({"hook": "draw", "data": {"item": data.get("item"), "deck": data.get("deck"), "color": data.get("color"), "card": card}})
+        await self.send({"hook": "draw", "data": {"item": data.get("item"), "deck": data.get("deck"), "color": data.get("color"), "jolly": data.get("jolly"), "card": card}})
 
     async def roll(self, item, /):
         await self.send({"hook": "roll", "data": {"item": item, "dice": [choice((1, 2, 3, 4, 5, 6)) for _ in range(8)]}})
